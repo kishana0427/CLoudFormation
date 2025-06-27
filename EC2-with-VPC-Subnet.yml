@@ -1,0 +1,261 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VPC with Public and Private Subnets & WIndows Instances
+Resources:
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+       - Key: Name
+         Value: MyVPC
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: MyIGW  
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId:
+        Ref: InternetGateway
+  
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']                          # NOTE: !Select [0, !GetAZs !Sub ${AWS::Region}]  
+      MapPublicIpOnLaunch: true                                          # OR use !Select [0, !GetAZs !Ref Region]   Note: Parameters:
+      Tags:                                                              #                                                    Region:                                                  
+      - Key: Name                                                        #                                                       Type: String                                            
+        Value: PublicSubnet1                                             #                                                       Default: ap-south-1
+  PublicSubnet2:                                                            # OR !Select [0, !GetAZs '']
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: PublicSubnet2
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value: PrivateSubnet1
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value: PrivateSubnet2
+
+  PublicRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+      - Key: Name
+        Value: PublicRouteTable1
+  PublicRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+      - Key: Name
+        Value: PublicRouteTable2
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+      - Key: Name
+        Value: PrivateRouteTable1
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+      - Key: Name
+        Value: PrivateRouteTable2
+  
+  RoutePubSub1:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+        RouteTableId: !Ref PublicRouteTable1
+        DestinationCidrBlock: '0.0.0.0/0'
+        GatewayId: !Ref InternetGateway
+  RoutePubSub2:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+        RouteTableId: !Ref PublicRouteTable2
+        DestinationCidrBlock: '0.0.0.0/0'
+        GatewayId: !Ref InternetGateway
+  
+  RoutePvtSubNATGateway1:
+    Type: AWS::EC2::Route
+    Properties:
+        RouteTableId: !Ref PrivateRouteTable1
+        DestinationCidrBlock: '0.0.0.0/0'
+        NatGatewayId: !Ref NATGateway
+
+  RoutePvtSubNATGateway2:
+    Type: AWS::EC2::Route
+    Properties:
+        RouteTableId: !Ref PrivateRouteTable2
+        DestinationCidrBlock: '0.0.0.0/0'
+        NatGatewayId: !Ref NATGateway
+
+  PubSubRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable1  
+  
+
+  PubSubRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable2  
+  
+
+  PvtSubRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1 
+  PvtSubRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+  
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+        AllocationId: !GetAtt NATGatewayEIP.AllocationId
+        SubnetId: !Ref PublicSubnet1
+        Tags:
+        - Key: Name
+          Value: NatGateWay
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+  
+  
+  MySG:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: MyVPC
+    Properties:
+      GroupDescription: SG to test ping
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: MY-VPC-SG
+
+  PubEC2Instance1:
+    Type: AWS::EC2::Instance
+    DependsOn: PublicSubnet1
+    Properties:
+      InstanceType: t3.micro
+      KeyName: Win-KP-2025
+      ImageId: ami-073586faab6ea2875
+      SubnetId: !Ref PublicSubnet1
+      SecurityGroupIds:
+        - !Ref MySG
+      Tags:
+        - Key: Name
+          Value: PubWINInstance1 
+  PubInstance2:
+    Type: AWS::EC2::Instance
+    DependsOn: PublicSubnet2
+    Properties:
+      InstanceType: t3.micro
+      KeyName: Win-KP-2025
+      ImageId: ami-073586faab6ea2875
+      SubnetId: !Ref PublicSubnet2
+      SecurityGroupIds:
+        - !Ref MySG
+      Tags:
+        - Key: Name
+          Value: PubWINInstance2
+
+  PvtWINInstance1:
+    Type: AWS::EC2::Instance
+    DependsOn: PrivateSubnet1
+    Properties:
+      InstanceType: t3.micro
+      KeyName: Win-KP-2025
+      ImageId: ami-073586faab6ea2875
+      SubnetId: !Ref PrivateSubnet1
+      SecurityGroupIds:
+        - !Ref MySG
+      Tags:
+        - Key: Name
+          Value: PvtWINInstance1
+
+  PvtWINInstance2:
+    Type: AWS::EC2::Instance
+    DependsOn: PrivateSubnet2
+    Properties:
+      InstanceType: t3.micro
+      KeyName: Win-KP-2025
+      ImageId: ami-073586faab6ea2875
+      SubnetId: !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref MySG
+      Tags:
+        - Key: Name
+          Value: PvtWINInstance2
+Outputs:
+    VPCId:
+      Description: VPC ID
+      Value: !Ref MyVPC
+
+    PublicSubnetId1:
+      Description: Public Subnet1 ID
+      Value: !Ref PublicSubnet1
+    PublicSubnetId2:
+      Description: Public Subnet2 ID
+      Value: !Ref PublicSubnet2
+
+    PrivateSubnetId1:
+      Description: Private Subnet1 ID
+      Value: !Ref PrivateSubnet1 
+    PrivateSubnetId2:
+      Description: Private Subnet2 ID
+      Value: !Ref PrivateSubnet2   
+  
+  
+  
+            
+  
+  
