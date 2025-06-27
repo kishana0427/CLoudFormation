@@ -1,0 +1,404 @@
+To deploy Amazon EKS (Elastic Kubernetes Service) with worker nodes using CloudFormation, you typically need two main CloudFormation stacks:
+
+1. EKS Cluster Stack – creates the EKS control plane.
+
+2. EKS Worker Nodes Stack – creates EC2 worker nodes and joins them to the cluster.
+
+Here’s a complete, working example in YAML format:
+
+🔧 Step 1: EKS Cluster CloudFormation Template
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Cluster Stack
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: eks-cluster
+  KubernetesVersion:
+    Type: String
+    Default: '1.29'
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+
+Resources:
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: !Ref KubernetesVersion
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds: !Ref SubnetIds
+
+Outputs:
+  ClusterName:
+    Value: !Ref ClusterName
+  ClusterRoleArn:
+    Value: !GetAtt EKSClusterRole.Arn
+  ClusterEndpoint:
+    Value: !GetAtt EKSCluster.Endpoint
+  ClusterCA:
+    Value: !GetAtt EKSCluster.CertificateAuthorityData
+
+
+🔧 Step 2: Worker Node Group CloudFormation Template
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Worker Nodes
+
+Parameters:
+  ClusterName:
+    Type: String
+  NodeGroupName:
+    Type: String
+    Default: eks-workers
+  NodeAutoScalingGroupMinSize:
+    Type: Number
+    Default: 2
+  NodeAutoScalingGroupMaxSize:
+    Type: Number
+    Default: 4
+  NodeInstanceType:
+    Type: String
+    Default: t3.medium
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+
+Resources:
+  NodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref ClusterName
+      NodegroupName: !Ref NodeGroupName
+      ScalingConfig:
+        MinSize: !Ref NodeAutoScalingGroupMinSize
+        MaxSize: !Ref NodeAutoScalingGroupMaxSize
+        DesiredSize: !Ref NodeAutoScalingGroupMinSize
+      DiskSize: 20
+      Subnets: !Ref SubnetIds
+      InstanceTypes:
+        - !Ref NodeInstanceType
+      NodeRole: !GetAtt NodeInstanceRole.Arn
+
+Outputs:
+  NodeGroupName:
+    Value: !Ref NodeGroup
+  NodeInstanceRoleArn:
+    Value: !GetAtt NodeInstanceRole.Arn
+
+
+🧭 How to Deploy
+
+1. Create your VPC and Subnets (or use existing).
+
+2. Deploy Cluster Stack:
+
+aws cloudformation deploy \
+  --template-file eks-cluster.yaml \
+  --stack-name EKSClusterStack \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides \
+    ClusterName=my-cluster \
+    VpcId=vpc-xxxxxxxx \
+    SubnetIds='subnet-aaa,subnet-bbb'
+
+3. Deploy Node Group Stack:
+
+aws cloudformation deploy \
+  --template-file eks-workers.yaml \
+  --stack-name EKSWorkerStack \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides \
+    ClusterName=my-cluster \
+    VpcId=vpc-xxxxxxxx \
+    SubnetIds='subnet-aaa,subnet-bbb'
+
+
+
+Perfect — since you already have a VPC with public and private subnets created by another CloudFormation 
+stack, you can create separate EKS cluster and nodegroup stacks that reference the existing infrastructure.
+
+✅ Here's how to proceed:
+
+1. Extract VPC and Subnet IDs
+Make sure you have:
+
+* VPC ID (e.g., vpc-0abc1234def5678gh)
+
+* At least 2 private subnet IDs for the EKS cluster and nodegroup (EKS typically prefers private subnets).
+
+* Optionally, use public subnets if you're testing or want public access to worker nodes.
+
+If these are outputs from your existing VPC stack, you can reference them in other stacks using ImportValue.
+
+
+
+🔧 Modify Cluster Stack to Use Imported VPC/Subnet IDs
+Assuming your existing VPC stack outputs look like this:
+
+Outputs:
+  VpcId:
+    Value: !Ref MyVPC
+    Export:
+      Name: MyVPCID
+
+  PrivateSubnets:
+    Value: !Join [",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]
+    Export:
+      Name: MyPrivateSubnetIDs
+
+
+Your EKS Cluster Stack should import these:
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: my-eks-cluster
+
+Resources:
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: '1.29'
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds: !Split [ ",", !ImportValue MyPrivateSubnetIDs ]
+
+
+🛠️ Nodegroup Stack (using same imported values)
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: my-eks-cluster
+
+Resources:
+  NodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref ClusterName
+      NodegroupName: eks-nodegroup
+      ScalingConfig:
+        MinSize: 2
+        MaxSize: 4
+        DesiredSize: 2
+      DiskSize: 20
+      Subnets: !Split [ ",", !ImportValue MyPrivateSubnetIDs ]
+      InstanceTypes: [ t3.medium ]
+      NodeRole: !GetAtt NodeInstanceRole.Arn
+
+
+📦 Deployment Order
+
+1. Ensure your VPC stack exports the subnet IDs and VPC ID using Export names.
+
+2. Deploy the EKS Cluster Stack (using !ImportValue for VPC/subnets).
+
+3. Deploy the EKS Nodegroup Stack (using the same imports).
+
+🚀 CLI Deployment Example
+
+aws cloudformation deploy \
+  --template-file eks-cluster.yaml \
+  --stack-name eks-cluster-stack \
+  --capabilities CAPABILITY_IAM
+
+aws cloudformation deploy \
+  --template-file eks-nodegroup.yaml \
+  --stack-name eks-nodegroup-stack \
+  --capabilities CAPABILITY_IAM
+
+Would you like me to generate complete eks-cluster.yaml and
+eks-nodegroup.yaml files using this structure, ready to deploy?
+
+generate complete eks-cluster.yaml and eks-nodegroup.yaml
+
+Here are the complete, ready-to-deploy CloudFormation templates for your EKS cluster 
+and managed node group, referencing an existing VPC stack.
+
+📄 eks-cluster.yaml
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Cluster Stack using existing VPC and subnets
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: my-eks-cluster
+
+Resources:
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-EKS-ClusterRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: '1.29'
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds: !Split [",", !ImportValue MyPrivateSubnetIDs]
+        EndpointPrivateAccess: true
+        EndpointPublicAccess: true
+
+Outputs:
+  ClusterName:
+    Value: !Ref EKSCluster
+  ClusterEndpoint:
+    Value: !GetAtt EKSCluster.Endpoint
+  ClusterRoleArn:
+    Value: !GetAtt EKSClusterRole.Arn
+
+
+
+📄 eks-nodegroup.yaml
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Managed Node Group Stack
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: my-eks-cluster
+  NodeGroupName:
+    Type: String
+    Default: eks-nodegroup
+
+Resources:
+  NodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-NodeInstanceRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+  EKSNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      NodegroupName: !Ref NodeGroupName
+      ClusterName: !Ref ClusterName
+      NodeRole: !GetAtt NodeInstanceRole.Arn
+      Subnets: !Split [",", !ImportValue MyPrivateSubnetIDs]
+      InstanceTypes:
+        - t3.medium
+      ScalingConfig:
+        MinSize: 2
+        MaxSize: 4
+        DesiredSize: 2
+      AmiType: AL2_x86_64
+      DiskSize: 20
+
+Outputs:
+  NodeGroupName:
+    Value: !Ref EKSNodeGroup
+  NodeInstanceRoleArn:
+    Value: !GetAtt NodeInstanceRole.Arn
+
+🛠️ How to Deploy
+Ensure your existing VPC stack exports:
+
+* "MyVPCID"
+
+* "MyPrivateSubnetIDs (comma-separated)"
+
+1. Deploy Cluster Stack
+
+aws cloudformation deploy \
+  --template-file eks-cluster.yaml \
+  --stack-name eks-cluster-stack \
+  --capabilities CAPABILITY_IAM
+
+2. Deploy Node Group Stack
+
+aws cloudformation deploy \
+  --template-file eks-nodegroup.yaml \
+  --stack-name eks-nodegroup-stack \
+  --capabilities CAPABILITY_IAM
+
+
+
+
+
+
