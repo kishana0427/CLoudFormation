@@ -1,6 +1,4 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: EKS Cluster with Windows Node Group in private subnets
-AWSTemplateFormatVersion: '2010-09-09'
 Description: EKS Ubuntu NodeGroup via Launch Template
 
 Parameters:
