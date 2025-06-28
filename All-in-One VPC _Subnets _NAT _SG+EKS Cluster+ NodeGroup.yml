@@ -1,0 +1,241 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Full EKS setup with VPC, EKS Cluster, and Ubuntu Node Group using Launch Template
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: MyUbuntuCluster
+
+  UbuntuAMI:
+    Type: String
+    Description: Canonical Ubuntu EKS-Optimized AMI (replace with latest per region)
+    Default: ami-0eb25ecf2f3c3b22f  # Example: Canonical Ubuntu 20.04 EKS-optimized for us-east-1
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 KeyPair to SSH into nodes
+
+Resources:
+  # VPC and Networking
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: MyVPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MyIGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnet1
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet1
+
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: NATGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: PublicRT
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicRTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: PrivateRT
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  PrivateRTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Security Group for EKS and SSH
+  MySG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EKS SG for control plane and SSH
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: MyEKSSG
+
+  # IAM Roles
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+
+  EKSNodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+  NodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EKSNodeInstanceRole
+
+  # EKS Cluster
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: "1.29"
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet1
+        SecurityGroupIds:
+          - !Ref MySG
+
+  # Launch Template for Ubuntu Nodes
+  UbuntuLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub ${ClusterName}-UbuntuLT
+      LaunchTemplateData:
+        ImageId: !Ref UbuntuAMI
+        InstanceType: t3.medium
+        KeyName: !Ref KeyName
+        SecurityGroupIds:
+          - !Ref MySG
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            /etc/eks/bootstrap.sh ${ClusterName}
+        IamInstanceProfile:
+          Name: !Ref NodeInstanceProfile
+
+  # EKS Node Group using Ubuntu Launch Template
+  UbuntuNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref EKSCluster
+      NodeRole: !GetAtt EKSNodeInstanceRole.Arn
+      Subnets:
+        - !Ref PrivateSubnet1
+      ScalingConfig:
+        MinSize: 1
+        MaxSize: 2
+        DesiredSize: 1
+      LaunchTemplate:
+        Name: !Ref UbuntuLaunchTemplate
+        Version: !GetAtt UbuntuLaunchTemplate.LatestVersionNumber
+      NodegroupName: !Sub ${ClusterName}-UbuntuNodeGroup
+      Tags:
+        Name: !Sub ${ClusterName}-UbuntuNodeGroup
+
+Outputs:
+  VpcId:
+    Value: !Ref MyVPC
+
+  ClusterName:
+    Value: !Ref EKSCluster
+
+  NodeGroup:
+    Value: !Ref UbuntuNodeGroup
+
+  PrivateSubnet:
+    Value: !Ref PrivateSubnet1
+
+  UbuntuLaunchTemplate:
+    Value: !Ref UbuntuLaunchTemplate
