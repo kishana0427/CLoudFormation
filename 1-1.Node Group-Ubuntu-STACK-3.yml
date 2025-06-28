@@ -4,7 +4,7 @@ Description: EKS Ubuntu NodeGroup via Launch Template
 Parameters:
   ClusterName:
     Type: String
-    Default: MyUbuntuCluster
+    Default: MyCluster
 
   UbuntuAMI:
     Type: String
@@ -51,10 +51,7 @@ Resources:
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash
-            set -o xtrace
             /etc/eks/bootstrap.sh ${ClusterName}
-        IamInstanceProfile:
-          Name: !Ref NodeInstanceProfile
 
   # Instance profile for NodeGroup
   NodeInstanceProfile:
@@ -72,11 +69,15 @@ Resources:
       Subnets: !Split [",", !ImportValue MyPublicSubnetIDs]
       ScalingConfig:
         MinSize: 2
-        MaxSize: 3
+        MaxSize: 2
         DesiredSize: 2
+      #LaunchTemplate:
+      #  Name: !Ref UbuntuLaunchTemplate
+      #  Version: !GetAtt UbuntuLaunchTemplate.LatestVersionNumber
       LaunchTemplate:
-        Name: !Ref UbuntuLaunchTemplate
+        Id: !Ref UbuntuLaunchTemplate
         Version: !GetAtt UbuntuLaunchTemplate.LatestVersionNumber
+
       NodegroupName: !Sub ${ClusterName}-UbuntuNodeGroup
       Tags:
         Name: !Sub ${ClusterName}-UbuntuNodeGroup
