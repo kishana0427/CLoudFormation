@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Cluster with Windows Node Group in private subnets
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: MyCluster
+
+Resources:
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: '1.29'
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds: !Split [",", !ImportValue MyPrivateSubnetIDs]
+        SecurityGroupIds:
+          - !ImportValue MySG
+
+  EKSNodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref EKSCluster
+      NodeRole: !GetAtt EKSNodeInstanceRole.Arn
+      Subnets: !Split [",", !ImportValue MyPublicSubnetIDs]
+      ScalingConfig:
+        MinSize: 1
+        MaxSize: 2
+        DesiredSize: 1
+      AmiType: AL2_x86_64
+      InstanceTypes:
+        - t3.medium      
+      DiskSize: 50
+      NodegroupName: !Sub ${ClusterName}-NodeGroup
+      Tags:
+        Name: !Sub ${ClusterName}-NodeGroup
+
+Outputs:
+  EKSClusterName:
+    Value: !Ref EKSCluster
+    Export:
+      Name: EKSClusterName
+
+  EKSNodeGroup:
+    Value: !Ref NodeGroup
+    Export:
+      Name: EKSNodeGroupName
