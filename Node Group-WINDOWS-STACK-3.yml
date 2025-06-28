@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Cluster with Windows Node Group in private subnets
+Resources:
+  EKSNodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref EKSCluster
+      NodeRole: !GetAtt EKSNodeInstanceRole.Arn
+      Subnets: !Split [",", !ImportValue MyPrivateSubnetIDs]
+      ScalingConfig:
+        MinSize: 1
+        MaxSize: 2
+        DesiredSize: 1
+      AmiType: WINDOWS_CORE_2019_FULL
+      InstanceTypes:
+        - t3.large
+      DiskSize: 50
+      NodegroupName: !Sub ${ClusterName}-NodeGroup
+      Tags:
+        Name: !Sub ${ClusterName}-NodeGroup
+
+Outputs:  
+  EKSNodeGroup:
+    Value: !Ref NodeGroup
+    Export:
+      Name: EKSNodeGroupName
