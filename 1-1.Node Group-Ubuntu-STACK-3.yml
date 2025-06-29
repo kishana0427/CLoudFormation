@@ -36,7 +36,7 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${ClusterName}-NodeInstanceRole
-
+          
   # Launch Template for Ubuntu AMI
   UbuntuLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -51,7 +51,8 @@ Resources:
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash
-            /etc/eks/bootstrap.sh ${ClusterName}
+            #/etc/eks/bootstrap.sh ${ClusterName}
+            /var/lib/cloud/scripts/per-boot/bootstrap.sh ${ClusterName}
 
   # Instance profile for NodeGroup
   NodeInstanceProfile:
