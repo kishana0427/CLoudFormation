@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Ubuntu NodeGroup via Launch Template (Fixed)
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: MyCluster
+
+  UbuntuAMI:
+    Type: String
+    Description: Canonical Ubuntu EKS Optimized AMI ID
+    Default: ami-0b76d5c190f64772a  # Replace with the latest for your region
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair to SSH into Ubuntu instances
+    Default: KK_New-20255
+
+Resources:
+
+  EKSNodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-NodeInstanceRole
+
+  NodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EKSNodeInstanceRole
+
+  UbuntuLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub ${ClusterName}-UbuntuLT
+      LaunchTemplateData:
+        ImageId: !Ref UbuntuAMI
+        InstanceType: t3.medium
+        KeyName: !Ref KeyName
+        SecurityGroupIds:
+          - !ImportValue MySG
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            /etc/eks/bootstrap.sh ${ClusterName}
+            #/var/lib/cloud/scripts/per-boot/bootstrap.sh ${ClusterName}
+
+
+  UbuntuNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !ImportValue EKSClusterName
+      NodeRole: !GetAtt EKSNodeInstanceRole.Arn
+      Subnets: !Split [",", !ImportValue MyPublicSubnetIDs]
+      ScalingConfig:
+        MinSize: 2
+        MaxSize: 2
+        DesiredSize: 2
+      LaunchTemplate:
+        Id: !Ref UbuntuLaunchTemplate
+        Version: !GetAtt UbuntuLaunchTemplate.LatestVersionNumber
+      NodegroupName: !Sub ${ClusterName}-UbuntuNodeGroup
+      Tags:
+        Name: !Sub ${ClusterName}-UbuntuNodeGroup
+        kubernetes.io/cluster/MyCluster: owned
+
+
+Outputs:
+  UbuntuNodeGroup:
+    Value: !Ref UbuntuNodeGroup
+    Export:
+      Name: UbuntuNodeGroupName
+
+# NOTE:=============================================================================================
+#   Here’s the AWS CLI command to fetch the latest Canonical Ubuntu 20.04 LTS 
+#   EKS‑optimized AMI for EKS version 1.29 in your region (for example, ap-south-1):
+#   aws ssm get-parameter \
+#   --name "/aws/service/canonical/ubuntu/eks/20.04/1.29/stable/current/amd64/hvm/ebs-gp2/ami-id" \
+#   --region ap-south-1 \
+#   --query "Parameter.Value" \
+#   --output text
+
+#   OUTPUT: ami-0510ded3b3450b0a2
+
+# NOTE:=============================================================================================
+#   Here's the AWS CLI command to fetch the latest Ubuntu 24.04 LTS EKS‑optimized AMI for EKS version 1.31
+#   (where 24.04 support begins):
+#   
+#   aws ssm get-parameters \
+#  --names /aws/service/canonical/ubuntu/eks/24.04/1.31/stable/current/amd64/hvm/ebs-gp3/ami-id \
+#  --region ap-south-1 \
+#  --query "Parameters[0].Value" \
+#  --output text
+
+
+#   OUTPUT: ami-0b76d5c190f64772a
+
+#   This AMI is officially released by Canonical for Ubuntu 24.04 on EKS 1.31+
+
+
+
+
+#NOTE:      sudo aws eks update-kubeconfig --name MyCluster --region ap-south-1 --kubeconfig /home/ubuntu/.kube/config
+#           sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
