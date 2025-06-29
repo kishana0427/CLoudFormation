@@ -838,6 +838,124 @@ Would you like me to:
     ✅ Include multiple availability zones (multi-AZ)?
 
     ✅ Add a Linux Amazon Linux 2 node group too (for mix setup)?
+
+NOTE:
+REMEMBER:
+
+list and use the latest Canonical Ubuntu EKS-optimized AMI in your region using AWS tools
+=========================================================================================
+
+To list and use the latest Canonical Ubuntu EKS-optimized AMI in your region using AWS tools,
+you can query the AWS Systems Manager (SSM) Parameter Store, which keeps up-to-date AMI IDs. 
+Here's how to do it—both via the AWS Console and the CLI:
+
+
+🛠️ Option 1: AWS Console (SSM Parameter Store)
+Open the AWS Systems Manager console.
+
+Navigate to Parameter Store (under Shared Resources).
+
+In the search bar, type:
+
+/aws/service/canonical/ubuntu/eks/
+
+You should see parameters like:
+
+/aws/service/canonical/ubuntu/eks/20.04/1.23/stable/current/amd64/hvm/ebs-gp2/ami-id
+
+Select the relevant parameter for your Ubuntu version (e.g., 20.04 or 24.04) and 
+click “View details” to see the current AMI ID.
+
+📌 These parameters always hold the latest supported AMI for that combination of Ubuntu and EKS version.
+
+🎯 Option 2: AWS CLI (Recommended)
+Replace <region> with your region (e.g., ap-south-1 for Hyderabad), and choose your Ubuntu & EKS versions:
+
+aws ssm get-parameter \
+  --name "/aws/service/canonical/ubuntu/eks/20.04/1.29/stable/current/amd64/hvm/ebs-gp2/ami-id" \
+  --region ap-south-1 \
+  --query "Parameter.Value" \
+  --output text
+
+✅ This returns the AMI ID, e.g.:
+
+ami-0510ded3b3450b0a2
+
+You can adjust the path to match your desired Ubuntu version (20.04, 22.04, 24.04) and EKS version (1.29, etc.).
+
+💡 Use It Directly in Your CloudFormation
+To have CloudFormation auto-resolve the AMI at deploy time, add a parameter like:
+
+Parameters:
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: "/aws/service/canonical/ubuntu/eks/20.04/1.29/stable/current/amd64/hvm/ebs-gp2/ami-id"
+
+Then reference it:
+
+ImageId: !Ref LatestAmiId
+
+
+This ensures you're always using the current, supported Ubuntu AMI without needing manual updates.
+
+✅ Next Steps
+Decide on Ubuntu LTS version (e.g., 20.04 or 24.04) and EKS version (1.29).
+
+Use the CLI command above to verify the AMI exists in your region.
+
+Update your launch template or CloudFormation to use it via SSM.
+
+Re-deploy, and your nodes will now have a valid bootstrap.sh script and join your cluster successfully.
+
+Would you like the exact CLI command for a specific Ubuntu/EKS combo, or help updating your CloudFormation
+template with the SSM parameter?
+
+
+for ubuntu 24.04LTS:
+===================
+
+Here's the AWS CLI command to fetch the latest Ubuntu 24.04 LTS EKS‑optimized AMI for EKS version 1.31 (where 24.04 support begins):
+
+aws ssm get-parameters \
+  --names /aws/service/canonical/ubuntu/eks/24.04/1.31/stable/current/amd64/hvm/ebs-gp3/ami-id \
+  --region ap-south-1 \
+  --query "Parameters[0].Value" \
+  --output text
+This returns the AMI ID you'll need—e.g.:
+
+ami-0b76d5c190f64772a
+
+This AMI is officially released by Canonical for Ubuntu 24.04 on EKS 1.31+ 
+
+⚙️ Integrate into CloudFormation
+To always use the latest official AMI in your template, update your Parameters section like this
+
+Parameters:
+  LatestEksUbuntu2404Ami:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: "/aws/service/canonical/ubuntu/eks/24.04/1.31/stable/current/amd64/hvm/ebs-gp3/ami-id"
+
+Then in your Launch Template:
+
+ImageId: !Ref LatestEksUbuntu2404Ami
+
+This ensures you're always using the current, EKS-compatible Ubuntu 24.04 AMI without needing manual updates.
+
+FINAL UPDATE BELOW COMMAND TO CONNECT Nodes TO WORK:
+===================================================
+===================================================
+
+NOTE:      sudo aws eks update-kubeconfig --name MyCluster --region ap-south-1 --kubeconfig /home/ubuntu/.kube/config
+
+           sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
+
+
+
+
+
+
+
+
     
 
 
