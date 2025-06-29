@@ -1,6 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: VPC with Public and Private Subnets for EKS and Windows Nodes
 
+Parameters:
+  ClusterName:
+    Type: String
+    Default: MyCluster
+
 Resources:
   MyVPC:
     Type: AWS::EC2::VPC
