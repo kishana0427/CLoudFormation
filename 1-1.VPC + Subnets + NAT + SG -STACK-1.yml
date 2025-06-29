@@ -36,6 +36,8 @@ Resources:
       Tags:
         - Key: Name
           Value: PublicSubnet1
+        - Key: kubernetes.io/cluster/${ClusterName}
+          Value: shared
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
@@ -47,6 +49,9 @@ Resources:
       Tags:
         - Key: Name
           Value: PublicSubnet2
+        - Key: kubernetes.io/cluster/${ClusterName}
+          Value: shared
+
 
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
@@ -58,6 +63,8 @@ Resources:
       Tags:
         - Key: Name
           Value: PrivateSubnet1
+        - Key: kubernetes.io/cluster/${ClusterName}
+          Value: shared
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
@@ -69,6 +76,8 @@ Resources:
       Tags:
         - Key: Name
           Value: PrivateSubnet2
+        - Key: kubernetes.io/cluster/${ClusterName}
+          Value: shared
 
   # NAT Gateway Setup
   NATGatewayEIP:
