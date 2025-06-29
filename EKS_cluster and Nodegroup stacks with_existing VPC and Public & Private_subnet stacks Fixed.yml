@@ -911,7 +911,46 @@ Would you like the exact CLI command for a specific Ubuntu/EKS combo, or help up
 template with the SSM parameter?
 
 
+          More Detailed for 20.04LTS:
+          ==========================
+          ==========================
+Here’s the AWS CLI command to fetch the latest Canonical Ubuntu 20.04 LTS EKS‑optimized AMI for EKS
+version 1.29 in your region (for example, ap-south-1):
+
+aws ssm get-parameter \
+  --name "/aws/service/canonical/ubuntu/eks/20.04/1.29/stable/current/amd64/hvm/ebs-gp2/ami-id" \
+  --region ap-south-1 \
+  --query "Parameter.Value" \
+  --output text
+
+➡️ This will return an AMI ID similar to:
+
+ami-0510ded3b3450b0a2
+
+You can then verify it by launching a test EC2 instance with this AMI and checking that
+/etc/eks/bootstrap.sh exists.
+
+🧰 To Automate in CloudFormation
+You can reference this automatically in your CloudFormation template:
+
+Parameters:
+  LatestEksUbuntuAmi:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: "/aws/service/canonical/ubuntu/eks/20.04/1.29/stable/current/amd64/hvm/ebs-gp2/ami-id"
+
+...
+
+LaunchTemplateData:
+  ImageId: !Ref LatestEksUbuntuAmi
+  ...
+This ensures you always use the latest and correct Ubuntu 20.04 EKS‑optimized AMI for your node group.
+
+Let me know if you want me to integrate this into your full stack template!
+          
+
+
 for ubuntu 24.04LTS:
+===================
 ===================
 
 Here's the AWS CLI command to fetch the latest Ubuntu 24.04 LTS EKS‑optimized AMI for EKS version 1.31 (where 24.04 support begins):
