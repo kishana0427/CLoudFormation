@@ -55,9 +55,14 @@ Resources:
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash
-            /etc/eks/bootstrap.sh ${ClusterName}
-            #/var/lib/cloud/scripts/per-boot/bootstrap.sh ${ClusterName}
-
+            /etc/eks/bootstrap.sh ${ClusterName} 
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub ${ClusterName}-UbuntuNode
+              - Key: kubernetes.io/cluster/${ClusterName}
+                Value: owned
 
   UbuntuNodeGroup:
     Type: AWS::EKS::Nodegroup
