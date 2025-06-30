@@ -9,7 +9,7 @@ Parameters:
   UbuntuAMI:
     Type: String
     Description: Ubuntu EKS Optimized AMI ID
-    Default: ami-0f918f7e67a3323f0  # Replace with latest Canonical Ubuntu AMI ID for your region
+    Default: ami-0b76d5c190f64772a  # Replace with latest Canonical Ubuntu AMI ID for your region
 
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
