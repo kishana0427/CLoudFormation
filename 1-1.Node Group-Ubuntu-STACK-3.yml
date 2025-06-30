@@ -38,7 +38,7 @@ Resources:
           Value: !Sub ${ClusterName}-NodeInstanceRole
           
   # Launch Template for Ubuntu AMI
-    UbuntuLaunchTemplate:
+  UbuntuLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
       LaunchTemplateName: !Sub ${ClusterName}-UbuntuLT
