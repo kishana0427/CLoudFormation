@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Managed Node Group for EKS Cluster
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: MyCluster
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair to SSH into nodes
+    Default: My-Key-2025
+
+Resources:
+
+  # IAM Role for the EKS Node Group
+  EKSNodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-NodeInstanceRole
+
+  # Instance profile for the node group
+  NodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EKSNodeInstanceRole
+
+  # AWS Managed Node Group
+  ManagedNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !ImportValue EKSClusterName
+      NodeRole: !GetAtt EKSNodeInstanceRole.Arn
+      Subnets: !Split [",", !ImportValue MyPublicSubnetIDs]
+      ScalingConfig:
+        MinSize: 2
+        MaxSize: 2
+        DesiredSize: 2
+      AmiType: AL2_x86_64              # Amazon Linux 2
+      InstanceTypes:
+        - t3.medium
+      RemoteAccess:
+        Ec2SshKey: !Ref KeyName
+      NodegroupName: !Sub ${ClusterName}-ManagedNodeGroup
+      Tags:
+        Name: !Sub ${ClusterName}-ManagedNodeGroup
+        kubernetes.io/cluster/MyCluster: owned
+
+Outputs:
+  ManagedNodeGroup:
+    Value: !Ref ManagedNodeGroup
+    Export:
+      Name: ManagedNodeGroupName
