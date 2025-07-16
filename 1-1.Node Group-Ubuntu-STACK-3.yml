@@ -9,7 +9,7 @@ Parameters:
   UbuntuAMI:
     Type: String
     Description: Ubuntu EKS Optimized AMI ID
-    Default: ami-0b76d5c190f64772a  # Replace with latest Canonical Ubuntu AMI ID for your region
+    Default: ami-086980564781307a2  # Replace with latest Canonical Ubuntu AMI ID for your region
 
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
@@ -44,7 +44,7 @@ Resources:
       LaunchTemplateName: !Sub ${ClusterName}-UbuntuLT
       LaunchTemplateData:
         ImageId: !Ref UbuntuAMI
-        InstanceType: t3.medium
+        InstanceType: t3.micro
         KeyName: !Ref KeyName
         SecurityGroupIds:
           - !ImportValue MySG
